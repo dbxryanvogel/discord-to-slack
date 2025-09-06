@@ -73,7 +73,13 @@ This will show all text channels and their IDs.
 
 ### 5. Run the Bot
 
-**Development mode** (with auto-reload):
+**Quick Start** (Bot + Dashboard together):
+```bash
+npm run dev:all
+```
+Then open http://localhost:3000/usage for the dashboard.
+
+**Development mode** (Bot only with auto-reload):
 ```bash
 npm run dev
 ```
@@ -81,7 +87,9 @@ npm run dev
 **Production mode**:
 ```bash
 npm run build
-npm start
+npm start        # Bot only
+# OR
+npm start:all    # Bot + Dashboard
 ```
 
 ## Project Structure
@@ -154,13 +162,62 @@ The `processMessage` function returns structured data that can be used to:
 - Generate support tickets
 - Track customer sentiment over time
 
+## 📊 Usage Dashboard
+
+The bot includes a beautiful web dashboard for monitoring usage and costs in real-time.
+
+### Starting the Dashboard
+
+**Development mode**:
+```bash
+npm run dashboard
+```
+
+**Production mode**:
+```bash
+npm run build
+npm run dashboard:prod
+```
+
+Then open your browser to: **http://localhost:3000/usage**
+
+### Dashboard Features
+
+- **Real-time Analytics**: Auto-refreshes every 30 seconds
+- **Cost Tracking**: Monitor exact costs per message, model, and channel
+- **Visual Charts**: 
+  - Daily usage trends with cost overlay
+  - Model usage distribution (donut chart)
+  - Support status breakdown
+  - Customer tone analysis (polar chart)
+  - Priority distribution
+  - Hourly activity patterns
+- **Top Channels Table**: See which channels cost the most
+- **Time Range Filters**: View data for 7, 30, or 90 days
+- **Key Metrics**: Total messages, tokens, costs, and averages
+
+### Dashboard Screenshots
+
+The dashboard provides comprehensive insights including:
+- 📈 Daily usage trends showing message volume and costs
+- 🤖 Model usage breakdown to optimize AI provider selection
+- 📋 Support request categorization
+- 🎭 Customer sentiment analysis
+- 🚨 Priority level distribution
+- ⏰ Peak usage hours for staffing optimization
+- 💬 Channel-specific costs and sentiment scores
+
 ## Available Scripts
 
 - `npm run build` - Compile TypeScript to JavaScript
-- `npm run dev` - Run in development mode with auto-reload
-- `npm start` - Run compiled production version
+- `npm run dev` - Run bot in development mode with auto-reload
+- `npm start` - Run compiled bot in production
+- `npm run dashboard` - Start usage dashboard (development)
+- `npm run dashboard:prod` - Start usage dashboard (production)
 - `npm run list-channels` - List all Discord channels
 - `npm run list-channels:prod` - List channels (production)
+- `npm run usage-stats` - Display usage statistics in terminal
+- `npm run usage-stats:prod` - Display usage statistics (production)
 
 ## Technologies Used
 
@@ -169,6 +226,9 @@ The `processMessage` function returns structured data that can be used to:
 - **Vercel AI SDK** - Structured AI responses ([Documentation](https://ai-sdk.dev/docs/ai-sdk-core/generating-structured-data))
 - **OpenAI** - Message analysis
 - **Zod** - Schema validation for AI responses
+- **Neon Database** - Serverless PostgreSQL for usage tracking
+- **Express.js** - Web server for dashboard
+- **Chart.js** - Interactive data visualization
 
 ## License
 
