@@ -1,3 +1,27 @@
+export interface MessageAnalysis {
+  supportStatus: 'help_request' | 'bug_report' | 'feature_request' | 'complaint' | 'feedback' | 'question' | 'documentation_issue' | 'urgent_issue' | 'general_discussion' | 'resolved' | 'other';
+  tone: 'happy' | 'neutral' | 'frustrated' | 'angry' | 'confused' | 'grateful' | 'urgent' | 'professional';
+  priority: 'low' | 'medium' | 'high' | 'critical';
+  sentiment: {
+    score: number;
+    confidence: number;
+  };
+  topics: string[];
+  needsResponse: boolean;
+  summary: string;
+  suggestedActions: string[];
+  customerMood: {
+    description: string;
+    emoji: string;
+  };
+  technicalDetails: {
+    hasCode: boolean;
+    hasError: boolean;
+    hasScreenshot: boolean;
+    mentionsVersion: boolean;
+  };
+}
+
 export interface MessageData {
   // Message info
   content: string;

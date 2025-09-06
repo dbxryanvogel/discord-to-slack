@@ -2,6 +2,7 @@ import 'dotenv/config';
 import { Client, GatewayIntentBits, Message, TextChannel, ThreadChannel } from 'discord.js';
 import { MessageData } from './types';
 import { processMessage } from './processMessage';
+import { initializeDatabase } from './database/client';
 
 // Create Discord client with necessary intents
 const client = new Client({
@@ -17,11 +18,19 @@ const client = new Client({
 let monitoredChannels: string[] = [];
 
 // When bot is ready
-client.once('ready', () => {
+client.once('ready', async () => {
     if (!client.user) return;
     
     console.log(`Logged in as ${client.user.tag}!`);
     console.log('Connected to servers:', client.guilds.cache.map(g => g.name).join(', '));
+    
+    // Initialize database
+    try {
+        await initializeDatabase();
+    } catch (error) {
+        console.error('Failed to initialize database:', error);
+        console.log('Bot will continue without database functionality');
+    }
     
     // List all available channels across all servers
     console.log('\n=== Available Channels ===');
@@ -176,7 +185,13 @@ client.on('messageCreate', async (message: Message) => {
     };
     
     // Process the message using our new function
-    await processMessage(messageData);
+    const result = await processMessage(messageData);
+    
+    // Log the analysis result (in production, this would be sent to Slack)
+    console.log('\n📊 Message Analysis Complete');
+    console.log(`Priority: ${result.analysis.priority.toUpperCase()}`);
+    console.log(`Status: ${result.analysis.supportStatus}`);
+    console.log(`Mood: ${result.analysis.customerMood.emoji} ${result.analysis.customerMood.description}`);
 });
 
 // Login to Discord
