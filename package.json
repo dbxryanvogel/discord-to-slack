@@ -1,0 +1,31 @@
+{
+  "name": "discord-to-slack",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "build": "tsc",
+    "dev": "nodemon --watch src --ext ts --exec ts-node src/bot.ts",
+    "start": "node dist/bot.js",
+    "list-channels": "ts-node src/list-channels.ts",
+    "list-channels:prod": "node dist/list-channels.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@ai-sdk/openai": "^2.0.24",
+    "ai": "^5.0.34",
+    "discord.js": "^14.22.1",
+    "dotenv": "^17.2.2",
+    "nodemon": "^3.1.9",
+    "zod": "^4.1.5"
+  },
+  "devDependencies": {
+    "@types/dotenv": "^6.1.1",
+    "@types/node": "^24.3.1",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.9.2"
+  }
+}
