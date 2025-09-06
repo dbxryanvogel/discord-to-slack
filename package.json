@@ -20,6 +20,10 @@
   "keywords": [],
   "author": "",
   "license": "ISC",
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=9.0.0"
+  },
   "dependencies": {
     "@ai-sdk/openai": "^2.0.24",
     "@neondatabase/serverless": "^1.0.1",
