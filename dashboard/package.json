@@ -1,0 +1,44 @@
+{
+  "name": "discord-dashboard",
+  "version": "1.0.0",
+  "description": "React dashboard for Discord bot analytics",
+  "main": "server.js",
+  "scripts": {
+    "build": "tsc && npm run build:react && node copy-static.js",
+    "build:react": "webpack --config client/webpack.config.js --mode production",
+    "dev": "concurrently \"npm run server\" \"npm run dev:react\"",
+    "dev:react": "webpack serve --config client/webpack.config.js --mode development",
+    "server": "ts-node server.ts",
+    "start": "node dist/server.js"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=9.0.0"
+  },
+  "dependencies": {
+    "@neondatabase/serverless": "^1.0.1",
+    "axios": "^1.7.9",
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.2",
+    "express": "^4.21.2",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.17",
+    "@types/express": "^5.0.0",
+    "@types/node": "^24.3.1",
+    "@types/react": "^18.2.0",
+    "@types/react-dom": "^18.2.0",
+    "concurrently": "^9.2.1",
+    "css-loader": "^7.1.2",
+    "html-webpack-plugin": "^5.6.4",
+    "style-loader": "^4.0.0",
+    "ts-loader": "^9.5.1",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.9.2",
+    "webpack": "^5.101.3",
+    "webpack-cli": "^5.1.4",
+    "webpack-dev-server": "^5.2.0"
+  }
+}

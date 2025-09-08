@@ -1,5 +1,12 @@
-require('dotenv').config();
-const { Client, GatewayIntentBits } = require('discord.js');
+import 'dotenv/config';
+import { Client, GatewayIntentBits, TextChannel } from 'discord.js';
+
+interface ChannelInfo {
+    id: string;
+    name: string;
+    server: string;
+    category: string;
+}
 
 // Create a minimal client just to list channels
 const client = new Client({
@@ -7,9 +14,14 @@ const client = new Client({
 });
 
 client.once('ready', () => {
+    if (!client.user) {
+        console.error('Client user not available');
+        process.exit(1);
+    }
+    
     console.log(`Connected as ${client.user.tag}\n`);
     
-    let allChannels = [];
+    const allChannels: ChannelInfo[] = [];
     
     // Collect all text channels
     client.guilds.cache.forEach(guild => {
@@ -17,9 +29,9 @@ client.once('ready', () => {
         console.log('='.repeat(50));
         
         guild.channels.cache
-            .filter(channel => channel.type === 0) // 0 = text channel
+            .filter((channel): channel is TextChannel => channel.type === 0) // 0 = text channel
             .forEach(channel => {
-                const channelInfo = {
+                const channelInfo: ChannelInfo = {
                     id: channel.id,
                     name: channel.name,
                     server: guild.name,
@@ -45,7 +57,14 @@ client.once('ready', () => {
     process.exit(0);
 });
 
-client.login(process.env.DISCORD_TOKEN).catch(err => {
+const token = process.env.DISCORD_TOKEN;
+if (!token) {
+    console.error('DISCORD_TOKEN not found in environment variables');
+    console.log('\nMake sure you have a valid DISCORD_TOKEN in your .env file');
+    process.exit(1);
+}
+
+client.login(token).catch((err: Error) => {
     console.error('Failed to login:', err.message);
     console.log('\nMake sure you have a valid DISCORD_TOKEN in your .env file');
     process.exit(1);

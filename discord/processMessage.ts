@@ -129,25 +129,24 @@ Please analyze this message and categorize it according to:
     const result = await generateObject({
       model: openai(model),
       schema: messageAnalysisSchema,
-      prompt,
-      schemaName: 'MessageAnalysis',
-      schemaDescription: 'Customer support analysis of a Discord message'
-    });
+      prompt
+    } as any);
 
     const processingTime = Date.now() - startTime;
+    const analysis = result.object as MessageAnalysis;
 
     // Log the analysis results
     console.log('\n=== AI Analysis Results ===');
-    console.log('Support Status:', result.object.supportStatus);
-    console.log('Tone:', result.object.tone);
-    console.log('Priority:', result.object.priority);
-    console.log('Sentiment Score:', result.object.sentiment.score);
-    console.log('Topics:', result.object.topics.join(', '));
-    console.log('Needs Response:', result.object.needsResponse);
-    console.log('Summary:', result.object.summary);
-    console.log('Customer Mood:', `${result.object.customerMood.emoji} ${result.object.customerMood.description}`);
+    console.log('Support Status:', analysis.supportStatus);
+    console.log('Tone:', analysis.tone);
+    console.log('Priority:', analysis.priority);
+    console.log('Sentiment Score:', analysis.sentiment.score);
+    console.log('Topics:', analysis.topics.join(', '));
+    console.log('Needs Response:', analysis.needsResponse);
+    console.log('Summary:', analysis.summary);
+    console.log('Customer Mood:', `${analysis.customerMood.emoji} ${analysis.customerMood.description}`);
     console.log('\nSuggested Actions:');
-    result.object.suggestedActions.forEach(action => {
+    analysis.suggestedActions.forEach((action: string) => {
       console.log(`  - ${action}`);
     });
     
@@ -193,7 +192,7 @@ Please analyze this message and categorize it according to:
     // Save usage data to database
     await saveUsage(
       messageData,
-      result.object,
+      analysis,
       {
         promptTokens,
         completionTokens,
@@ -206,7 +205,7 @@ Please analyze this message and categorize it according to:
     // Save message log with full analysis
     await saveMessageLog(
       messageData,
-      result.object,
+      analysis,
       {
         promptTokens,
         completionTokens,
@@ -217,7 +216,7 @@ Please analyze this message and categorize it according to:
     );
 
     return {
-      analysis: result.object,
+      analysis,
       usage: {
         promptTokens,
         completionTokens,

@@ -1,0 +1,35 @@
+{
+  "name": "discord-bot",
+  "version": "1.0.0",
+  "description": "Discord bot with AI message analysis",
+  "main": "bot.js",
+  "scripts": {
+    "build": "tsc",
+    "dev": "nodemon --watch . --ext ts --exec ts-node bot.ts",
+    "start": "node dist/bot.js",
+    "list-channels": "ts-node list-channels.ts",
+    "list-channels:prod": "node dist/list-channels.js",
+    "usage-stats": "ts-node usage-stats.ts",
+    "usage-stats:prod": "node dist/usage-stats.js",
+    "init-db": "ts-node init-db.ts",
+    "init-db:prod": "node dist/init-db.js"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=9.0.0"
+  },
+  "dependencies": {
+    "@ai-sdk/openai": "^2.0.24",
+    "@neondatabase/serverless": "^1.0.1",
+    "ai": "^5.0.34",
+    "discord.js": "^14.22.1",
+    "dotenv": "^17.2.2",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@types/node": "^24.3.1",
+    "nodemon": "^3.1.9",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.9.2"
+  }
+}
