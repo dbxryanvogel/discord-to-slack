@@ -12,3 +12,4 @@ npm-debug.log*
 bun.lock
 yarn.lock
 pnpm-lock.yaml
+old/
