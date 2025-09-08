@@ -140,3 +140,75 @@ SELECT
 FROM usage
 GROUP BY channel_id, channel_name, server_name
 ORDER BY message_count DESC;
+
+-- Create settings table for Slack webhook configuration
+CREATE TABLE IF NOT EXISTS webhook_settings (
+    id SERIAL PRIMARY KEY,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    
+    -- Webhook configuration
+    slack_webhook_url VARCHAR(500),
+    webhook_enabled BOOLEAN DEFAULT FALSE,
+    
+    -- Priority thresholds
+    send_critical BOOLEAN DEFAULT TRUE,
+    send_high BOOLEAN DEFAULT TRUE,
+    send_medium BOOLEAN DEFAULT FALSE,
+    send_low BOOLEAN DEFAULT FALSE,
+    
+    -- Sentiment thresholds
+    min_sentiment_score DECIMAL(3, 2) DEFAULT -1.0, -- Send if sentiment <= this value
+    max_sentiment_score DECIMAL(3, 2) DEFAULT 1.0,  -- Send if sentiment >= this value (for very positive feedback)
+    
+    -- Support status filters
+    send_help_request BOOLEAN DEFAULT TRUE,
+    send_bug_report BOOLEAN DEFAULT TRUE,
+    send_feature_request BOOLEAN DEFAULT FALSE,
+    send_complaint BOOLEAN DEFAULT TRUE,
+    send_urgent_issue BOOLEAN DEFAULT TRUE,
+    send_feedback BOOLEAN DEFAULT FALSE,
+    send_question BOOLEAN DEFAULT FALSE,
+    send_documentation_issue BOOLEAN DEFAULT FALSE,
+    send_general_discussion BOOLEAN DEFAULT FALSE,
+    send_resolved BOOLEAN DEFAULT FALSE,
+    send_other BOOLEAN DEFAULT FALSE,
+    
+    -- Additional filters
+    only_needs_response BOOLEAN DEFAULT FALSE, -- Only send if needs_response is true
+    
+    -- Rate limiting
+    cooldown_minutes INTEGER DEFAULT 5, -- Minimum minutes between webhooks for same channel
+    
+    -- Metadata
+    description TEXT DEFAULT 'Default webhook settings'
+);
+
+-- Insert default settings
+INSERT INTO webhook_settings (description) VALUES ('Default webhook settings') 
+ON CONFLICT DO NOTHING;
+
+-- Create index for webhook settings
+CREATE INDEX IF NOT EXISTS idx_webhook_settings_enabled ON webhook_settings(webhook_enabled);
+
+-- Create table to track webhook sends (for rate limiting)
+CREATE TABLE IF NOT EXISTS webhook_sends (
+    id SERIAL PRIMARY KEY,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    
+    message_id VARCHAR(255) NOT NULL,
+    channel_id VARCHAR(255) NOT NULL,
+    webhook_url VARCHAR(500) NOT NULL,
+    
+    -- Response tracking
+    success BOOLEAN DEFAULT FALSE,
+    response_status INTEGER,
+    error_message TEXT,
+    
+    UNIQUE(message_id) -- Prevent duplicate sends for same message
+);
+
+-- Create indexes for webhook sends
+CREATE INDEX IF NOT EXISTS idx_webhook_sends_created_at ON webhook_sends(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_webhook_sends_channel_id ON webhook_sends(channel_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_webhook_sends_message_id ON webhook_sends(message_id);

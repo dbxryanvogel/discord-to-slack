@@ -109,3 +109,47 @@ export interface DailyUsageStats {
   total_cost: number;
   avg_sentiment: number;
 }
+
+export interface MessageLogsResponse {
+  messageLogs: MessageLog[];
+  total: number;
+  hasMore: boolean;
+  stats: MessageLogStats;
+}
+
+export interface MessageLogFilters {
+  search: string;
+  priority: string;
+  supportStatus: string;
+  tone: string;
+  channelId: string;
+  authorId: string;
+}
+
+export interface WebhookSettings {
+  id?: number;
+  created_at?: string;
+  updated_at?: string;
+  slack_webhook_url?: string;
+  webhook_enabled?: boolean;
+  send_critical?: boolean;
+  send_high?: boolean;
+  send_medium?: boolean;
+  send_low?: boolean;
+  min_sentiment_score?: number;
+  max_sentiment_score?: number;
+  send_help_request?: boolean;
+  send_bug_report?: boolean;
+  send_feature_request?: boolean;
+  send_complaint?: boolean;
+  send_urgent_issue?: boolean;
+  send_feedback?: boolean;
+  send_question?: boolean;
+  send_documentation_issue?: boolean;
+  send_general_discussion?: boolean;
+  send_resolved?: boolean;
+  send_other?: boolean;
+  only_needs_response?: boolean;
+  cooldown_minutes?: number;
+  description?: string;
+}

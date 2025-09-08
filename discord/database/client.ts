@@ -486,3 +486,284 @@ export async function getMessageLogStats() {
     WHERE created_at >= NOW() - INTERVAL '24 hours'
   `;
 }
+
+/**
+ * Get webhook settings
+ */
+export async function getWebhookSettings() {
+  const result = await sql`
+    SELECT * FROM webhook_settings 
+    ORDER BY created_at DESC 
+    LIMIT 1
+  `;
+  return result[0] || null;
+}
+
+/**
+ * Update webhook settings
+ */
+export async function updateWebhookSettings(settings: {
+  slack_webhook_url?: string;
+  webhook_enabled?: boolean;
+  send_critical?: boolean;
+  send_high?: boolean;
+  send_medium?: boolean;
+  send_low?: boolean;
+  min_sentiment_score?: number;
+  max_sentiment_score?: number;
+  send_help_request?: boolean;
+  send_bug_report?: boolean;
+  send_feature_request?: boolean;
+  send_complaint?: boolean;
+  send_urgent_issue?: boolean;
+  send_feedback?: boolean;
+  send_question?: boolean;
+  send_documentation_issue?: boolean;
+  send_general_discussion?: boolean;
+  send_resolved?: boolean;
+  send_other?: boolean;
+  only_needs_response?: boolean;
+  cooldown_minutes?: number;
+  description?: string;
+}) {
+  const result = await sql`
+    UPDATE webhook_settings SET
+      slack_webhook_url = COALESCE(${settings.slack_webhook_url}, slack_webhook_url),
+      webhook_enabled = COALESCE(${settings.webhook_enabled}, webhook_enabled),
+      send_critical = COALESCE(${settings.send_critical}, send_critical),
+      send_high = COALESCE(${settings.send_high}, send_high),
+      send_medium = COALESCE(${settings.send_medium}, send_medium),
+      send_low = COALESCE(${settings.send_low}, send_low),
+      min_sentiment_score = COALESCE(${settings.min_sentiment_score}, min_sentiment_score),
+      max_sentiment_score = COALESCE(${settings.max_sentiment_score}, max_sentiment_score),
+      send_help_request = COALESCE(${settings.send_help_request}, send_help_request),
+      send_bug_report = COALESCE(${settings.send_bug_report}, send_bug_report),
+      send_feature_request = COALESCE(${settings.send_feature_request}, send_feature_request),
+      send_complaint = COALESCE(${settings.send_complaint}, send_complaint),
+      send_urgent_issue = COALESCE(${settings.send_urgent_issue}, send_urgent_issue),
+      send_feedback = COALESCE(${settings.send_feedback}, send_feedback),
+      send_question = COALESCE(${settings.send_question}, send_question),
+      send_documentation_issue = COALESCE(${settings.send_documentation_issue}, send_documentation_issue),
+      send_general_discussion = COALESCE(${settings.send_general_discussion}, send_general_discussion),
+      send_resolved = COALESCE(${settings.send_resolved}, send_resolved),
+      send_other = COALESCE(${settings.send_other}, send_other),
+      only_needs_response = COALESCE(${settings.only_needs_response}, only_needs_response),
+      cooldown_minutes = COALESCE(${settings.cooldown_minutes}, cooldown_minutes),
+      description = COALESCE(${settings.description}, description),
+      updated_at = CURRENT_TIMESTAMP
+    WHERE id = (SELECT id FROM webhook_settings ORDER BY created_at DESC LIMIT 1)
+    RETURNING *
+  `;
+  return result[0];
+}
+
+/**
+ * Check if we should send a webhook for this message
+ */
+export async function shouldSendWebhook(
+  messageData: MessageData,
+  analysis: MessageAnalysis
+): Promise<boolean> {
+  try {
+    const settings = await getWebhookSettings();
+    
+    if (!settings || !settings.webhook_enabled || !settings.slack_webhook_url) {
+      return false;
+    }
+
+    // Check if we need to respect the "only needs response" filter
+    if (settings.only_needs_response && !analysis.needsResponse) {
+      return false;
+    }
+
+    // Check priority filters
+    const priorityMap = {
+      critical: settings.send_critical,
+      high: settings.send_high,
+      medium: settings.send_medium,
+      low: settings.send_low
+    };
+    
+    if (!priorityMap[analysis.priority as keyof typeof priorityMap]) {
+      return false;
+    }
+
+    // Check sentiment thresholds
+    const sentimentScore = analysis.sentiment.score;
+    if (sentimentScore > settings.max_sentiment_score && sentimentScore < settings.min_sentiment_score) {
+      return false;
+    }
+
+    // Check support status filters
+    const statusMap = {
+      help_request: settings.send_help_request,
+      bug_report: settings.send_bug_report,
+      feature_request: settings.send_feature_request,
+      complaint: settings.send_complaint,
+      urgent_issue: settings.send_urgent_issue,
+      feedback: settings.send_feedback,
+      question: settings.send_question,
+      documentation_issue: settings.send_documentation_issue,
+      general_discussion: settings.send_general_discussion,
+      resolved: settings.send_resolved,
+      other: settings.send_other
+    };
+
+    if (!statusMap[analysis.supportStatus as keyof typeof statusMap]) {
+      return false;
+    }
+
+    // Check rate limiting (cooldown)
+    const recentSend = await sql`
+      SELECT created_at FROM webhook_sends 
+      WHERE channel_id = ${messageData.channel.id} 
+        AND created_at > NOW() - INTERVAL '${settings.cooldown_minutes} minutes'
+      ORDER BY created_at DESC 
+      LIMIT 1
+    `;
+
+    if (recentSend.length > 0) {
+      console.log(`⏰ Webhook cooldown active for channel ${messageData.channel.name}`);
+      return false;
+    }
+
+    return true;
+  } catch (error) {
+    console.error('❌ Error checking webhook conditions:', error);
+    return false;
+  }
+}
+
+/**
+ * Send Slack webhook
+ */
+export async function sendSlackWebhook(
+  messageData: MessageData,
+  analysis: MessageAnalysis
+): Promise<boolean> {
+  try {
+    const settings = await getWebhookSettings();
+    
+    if (!settings || !settings.slack_webhook_url) {
+      console.log('❌ No webhook URL configured');
+      return false;
+    }
+
+    // Create Discord message URL
+    const discordUrl = `https://discord.com/channels/${messageData.guild.id}/${messageData.channel.id}/${messageData.id}`;
+    
+    // Determine color based on priority and sentiment
+    let color = '#36a64f'; // Default green
+    if (analysis.priority === 'critical') color = '#ff0000'; // Red
+    else if (analysis.priority === 'high') color = '#ff6600'; // Orange
+    else if (analysis.priority === 'medium') color = '#ffcc00'; // Yellow
+    else if (analysis.sentiment.score < -0.5) color = '#ff3300'; // Red for very negative
+
+    // Create Slack message payload
+    const slackPayload = {
+      text: `New Discord message requires attention`,
+      attachments: [
+        {
+          color: color,
+          title: `${analysis.customerMood.emoji} Message from ${messageData.author.tag}`,
+          title_link: discordUrl,
+          fields: [
+            {
+              title: 'Channel',
+              value: `#${messageData.channel.name} (${messageData.guild.name})`,
+              short: true
+            },
+            {
+              title: 'Priority',
+              value: analysis.priority.toUpperCase(),
+              short: true
+            },
+            {
+              title: 'Support Status',
+              value: analysis.supportStatus.replace('_', ' ').toUpperCase(),
+              short: true
+            },
+            {
+              title: 'Sentiment',
+              value: `${analysis.sentiment.score.toFixed(2)} (${analysis.tone})`,
+              short: true
+            },
+            {
+              title: 'Summary',
+              value: analysis.summary,
+              short: false
+            }
+          ],
+          text: messageData.content.length > 500 
+            ? messageData.content.substring(0, 500) + '...' 
+            : messageData.content,
+          footer: 'Discord Bot',
+          ts: Math.floor(messageData.timestamp.getTime() / 1000)
+        }
+      ]
+    };
+
+    // Send webhook
+    const response = await fetch(settings.slack_webhook_url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(slackPayload)
+    });
+
+    const success = response.ok;
+    
+    // Log the webhook send
+    await sql`
+      INSERT INTO webhook_sends (
+        message_id,
+        channel_id,
+        webhook_url,
+        success,
+        response_status,
+        error_message
+      ) VALUES (
+        ${messageData.id},
+        ${messageData.channel.id},
+        ${settings.slack_webhook_url},
+        ${success},
+        ${response.status},
+        ${success ? null : await response.text()}
+      )
+    `;
+
+    if (success) {
+      console.log(`✅ Slack webhook sent for message ${messageData.id}`);
+    } else {
+      console.error(`❌ Slack webhook failed: ${response.status} ${response.statusText}`);
+    }
+
+    return success;
+  } catch (error) {
+    console.error('❌ Error sending Slack webhook:', error);
+    
+    // Log the failed attempt
+    try {
+      await sql`
+        INSERT INTO webhook_sends (
+          message_id,
+          channel_id,
+          webhook_url,
+          success,
+          error_message
+        ) VALUES (
+          ${messageData.id},
+          ${messageData.channel.id},
+          'unknown',
+          false,
+          ${error instanceof Error ? error.message : 'Unknown error'}
+        )
+      `;
+    } catch (logError) {
+      console.error('❌ Failed to log webhook error:', logError);
+    }
+    
+    return false;
+  }
+}

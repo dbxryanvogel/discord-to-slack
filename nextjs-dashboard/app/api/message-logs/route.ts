@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getRecentMessageLogs, getMessageLogStats, getMessageLogsNeedingResponse } from '@/lib/database';
+import { getMessageLogs, getMessageLogStats, getMessageLogsNeedingResponse } from '@/lib/database';
 
 export async function GET(request: Request) {
   try {
@@ -7,18 +7,44 @@ export async function GET(request: Request) {
     const limit = parseInt(searchParams.get('limit') || '50');
     const offset = parseInt(searchParams.get('offset') || '0');
     const needsResponse = searchParams.get('needs_response') === 'true';
+    
+    // Search and filter parameters
+    const search = searchParams.get('search') || '';
+    const priority = searchParams.get('priority') || '';
+    const supportStatus = searchParams.get('support_status') || '';
+    const tone = searchParams.get('tone') || '';
+    const channelId = searchParams.get('channel_id') || '';
+    const authorId = searchParams.get('author_id') || '';
 
-    let messageLogs;
+    let result;
     if (needsResponse) {
-      messageLogs = await getMessageLogsNeedingResponse();
+      result = await getMessageLogsNeedingResponse();
+      // For needs response, we don't paginate but we can still filter
+      return NextResponse.json({
+        messageLogs: result,
+        total: result.length,
+        hasMore: false,
+        stats: (await getMessageLogStats())[0] || {}
+      });
     } else {
-      messageLogs = await getRecentMessageLogs(limit, offset);
+      result = await getMessageLogs({
+        limit,
+        offset,
+        search,
+        priority,
+        supportStatus,
+        tone,
+        channelId,
+        authorId
+      });
     }
 
     const stats = await getMessageLogStats();
 
     return NextResponse.json({
-      messageLogs,
+      messageLogs: result.logs,
+      total: result.total,
+      hasMore: result.hasMore,
       stats: stats[0] || {}
     });
   } catch (error) {

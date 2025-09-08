@@ -2,7 +2,7 @@ import { generateObject } from 'ai';
 import { openai } from '@ai-sdk/openai';
 import { z } from 'zod';
 import { MessageData } from './types';
-import { saveUsage, saveMessageLog } from './database/client';
+import { saveUsage, saveMessageLog, shouldSendWebhook, sendSlackWebhook } from './database/client';
 
 // Define the schema for message analysis
 const messageAnalysisSchema = z.object({
@@ -214,6 +214,25 @@ Please analyze this message and categorize it according to:
       model,
       processingTime
     );
+
+    // Check if we should send a Slack webhook
+    try {
+      const shouldSend = await shouldSendWebhook(messageData, analysis);
+      if (shouldSend) {
+        console.log(`🔔 Sending Slack webhook for message from ${messageData.author.tag}`);
+        const webhookSent = await sendSlackWebhook(messageData, analysis);
+        if (webhookSent) {
+          console.log(`✅ Slack webhook sent successfully`);
+        } else {
+          console.log(`❌ Failed to send Slack webhook`);
+        }
+      } else {
+        console.log(`⏭️  Message doesn't meet webhook criteria`);
+      }
+    } catch (webhookError) {
+      console.error('❌ Error processing webhook:', webhookError);
+      // Don't fail the entire message processing if webhook fails
+    }
 
     return {
       analysis,

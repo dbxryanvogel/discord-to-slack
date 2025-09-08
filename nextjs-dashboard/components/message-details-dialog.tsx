@@ -43,8 +43,8 @@ export function MessageDetailsDialog({ message, open, onOpenChange }: MessageDet
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
+    <Dialog open={open} onOpenChange={onOpenChange} modal={true}>
+      <DialogContent className="min-w-[80vw] overflow-y-auto w-[95vw] max-h-[85vh]">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             Message from {message.author_tag}
@@ -57,7 +57,7 @@ export function MessageDetailsDialog({ message, open, onOpenChange }: MessageDet
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-6">
+        <div className="space-y-6 w-full">
           {/* Message Content */}
           <div className="space-y-2">
             <h3 className="text-lg font-semibold">Message Content</h3>
