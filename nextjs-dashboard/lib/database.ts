@@ -375,7 +375,6 @@ export async function updateWebhookSettings(settings: {
   send_resolved?: boolean;
   send_other?: boolean;
   only_needs_response?: boolean;
-  cooldown_minutes?: number;
   description?: string;
 }) {
   const result = await sql`
@@ -400,7 +399,6 @@ export async function updateWebhookSettings(settings: {
       send_resolved = COALESCE(${settings.send_resolved}, send_resolved),
       send_other = COALESCE(${settings.send_other}, send_other),
       only_needs_response = COALESCE(${settings.only_needs_response}, only_needs_response),
-      cooldown_minutes = COALESCE(${settings.cooldown_minutes}, cooldown_minutes),
       description = COALESCE(${settings.description}, description),
       updated_at = CURRENT_TIMESTAMP
     WHERE id = (SELECT id FROM webhook_settings ORDER BY created_at DESC LIMIT 1)

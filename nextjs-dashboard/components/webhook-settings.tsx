@@ -74,38 +74,20 @@ export function WebhookSettingsComponent() {
     }
 
     try {
-      const testPayload = {
-        text: 'Test message from Discord Bot Dashboard',
-        attachments: [
-          {
-            color: '#36a64f',
-            title: '🧪 Test Webhook',
-            fields: [
-              {
-                title: 'Status',
-                value: 'Webhook configuration is working!',
-                short: false
-              }
-            ],
-            footer: 'Discord Bot Dashboard',
-            ts: Math.floor(Date.now() / 1000)
-          }
-        ]
-      };
-
-      const response = await fetch(settings.slack_webhook_url, {
+      const response = await fetch('/api/test-webhook', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(testPayload),
       });
 
+      const result = await response.json();
+
       if (response.ok) {
-        setSuccess('Test webhook sent successfully! Check your Slack channel.');
+        setSuccess(result.message);
         setTimeout(() => setSuccess(null), 5000);
       } else {
-        throw new Error(`Webhook test failed: ${response.status} ${response.statusText}`);
+        throw new Error(result.error || 'Webhook test failed');
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Webhook test failed');
@@ -176,20 +158,6 @@ export function WebhookSettingsComponent() {
             <Label htmlFor="webhook-enabled">Enable webhook notifications</Label>
           </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="cooldown">Cooldown (minutes)</Label>
-            <Input
-              id="cooldown"
-              type="number"
-              min="1"
-              max="60"
-              value={settings.cooldown_minutes || 5}
-              onChange={(e) => updateSetting('cooldown_minutes', parseInt(e.target.value))}
-            />
-            <p className="text-sm text-muted-foreground">
-              Minimum time between webhooks for the same channel
-            </p>
-          </div>
 
           <div className="flex gap-2">
             <Button onClick={testWebhook} variant="outline" disabled={!settings.slack_webhook_url}>

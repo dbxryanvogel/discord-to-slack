@@ -150,6 +150,5 @@ export interface WebhookSettings {
   send_resolved?: boolean;
   send_other?: boolean;
   only_needs_response?: boolean;
-  cooldown_minutes?: number;
   description?: string;
 }

@@ -523,7 +523,6 @@ export async function updateWebhookSettings(settings: {
   send_resolved?: boolean;
   send_other?: boolean;
   only_needs_response?: boolean;
-  cooldown_minutes?: number;
   description?: string;
 }) {
   const result = await sql`
@@ -548,7 +547,6 @@ export async function updateWebhookSettings(settings: {
       send_resolved = COALESCE(${settings.send_resolved}, send_resolved),
       send_other = COALESCE(${settings.send_other}, send_other),
       only_needs_response = COALESCE(${settings.only_needs_response}, only_needs_response),
-      cooldown_minutes = COALESCE(${settings.cooldown_minutes}, cooldown_minutes),
       description = COALESCE(${settings.description}, description),
       updated_at = CURRENT_TIMESTAMP
     WHERE id = (SELECT id FROM webhook_settings ORDER BY created_at DESC LIMIT 1)
@@ -613,19 +611,7 @@ export async function shouldSendWebhook(
       return false;
     }
 
-    // Check rate limiting (cooldown)
-    const recentSend = await sql`
-      SELECT created_at FROM webhook_sends 
-      WHERE channel_id = ${messageData.channel.id} 
-        AND created_at > NOW() - INTERVAL '${settings.cooldown_minutes} minutes'
-      ORDER BY created_at DESC 
-      LIMIT 1
-    `;
-
-    if (recentSend.length > 0) {
-      console.log(`⏰ Webhook cooldown active for channel ${messageData.channel.name}`);
-      return false;
-    }
+    // No cooldown - removed as requested
 
     return true;
   } catch (error) {

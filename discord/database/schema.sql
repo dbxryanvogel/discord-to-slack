@@ -177,9 +177,6 @@ CREATE TABLE IF NOT EXISTS webhook_settings (
     -- Additional filters
     only_needs_response BOOLEAN DEFAULT FALSE, -- Only send if needs_response is true
     
-    -- Rate limiting
-    cooldown_minutes INTEGER DEFAULT 5, -- Minimum minutes between webhooks for same channel
-    
     -- Metadata
     description TEXT DEFAULT 'Default webhook settings'
 );
@@ -191,7 +188,7 @@ ON CONFLICT DO NOTHING;
 -- Create index for webhook settings
 CREATE INDEX IF NOT EXISTS idx_webhook_settings_enabled ON webhook_settings(webhook_enabled);
 
--- Create table to track webhook sends (for rate limiting)
+-- Create table to track webhook sends (for preventing duplicates)
 CREATE TABLE IF NOT EXISTS webhook_sends (
     id SERIAL PRIMARY KEY,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -210,5 +207,4 @@ CREATE TABLE IF NOT EXISTS webhook_sends (
 
 -- Create indexes for webhook sends
 CREATE INDEX IF NOT EXISTS idx_webhook_sends_created_at ON webhook_sends(created_at DESC);
-CREATE INDEX IF NOT EXISTS idx_webhook_sends_channel_id ON webhook_sends(channel_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_webhook_sends_message_id ON webhook_sends(message_id);
