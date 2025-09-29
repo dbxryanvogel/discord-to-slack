@@ -1,0 +1,30 @@
+{
+  "name": "discord-to-slack",
+  "version": "1.0.0",
+  "description": "Discord to Slack integration with AI-powered message analysis and web dashboard",
+  "scripts": {
+    "discord:dev": "cd discord && npm run dev",
+    "discord:build": "cd discord && npm run build",
+    "discord:start": "cd discord && npm run start",
+    "discord:list-channels": "cd discord && npm run list-channels",
+    "discord:list-channels:prod": "cd discord && npm run list-channels:prod",
+    "discord:usage-stats": "cd discord && npm run usage-stats",
+    "discord:usage-stats:prod": "cd discord && npm run usage-stats:prod",
+    "discord:init-db": "cd discord && npm run init-db",
+    "discord:init-db:prod": "cd discord && npm run init-db:prod",
+    "dashboard:dev": "cd nextjs-dashboard && npm run dev",
+    "dashboard:build": "cd nextjs-dashboard && npm run build",
+    "dashboard:start": "cd nextjs-dashboard && npm run start",
+    "build": "npm run discord:build && npm run dashboard:build",
+    "dev": "concurrently \"npm run discord:dev\" \"npm run dashboard:dev\"",
+    "install:all": "npm install && cd discord && npm install && cd ../nextjs-dashboard && npm install",
+    "clean": "cd discord && rm -rf dist && cd ../nextjs-dashboard && rm -rf .next"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=9.0.0"
+  }
+}
