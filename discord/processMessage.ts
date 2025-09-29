@@ -2,7 +2,7 @@ import { generateObject } from 'ai';
 import { openai } from '@ai-sdk/openai';
 import { z } from 'zod';
 import { MessageData } from './types';
-import { saveUsage, saveMessageLog, shouldSendWebhook, sendSlackWebhook } from './database/client';
+import { saveUsage, saveMessageLog, shouldSendWebhook, sendSlackWebhook, getEnabledTeams, shouldTeamReceiveWebhook, sendTeamSlackWebhook } from './database/client';
 
 // Define the schema for message analysis
 const messageAnalysisSchema = z.object({
@@ -56,7 +56,13 @@ const messageAnalysisSchema = z.object({
     hasError: z.boolean().describe('Whether the message mentions errors'),
     hasScreenshot: z.boolean().describe('Whether the message includes screenshots or images'),
     mentionsVersion: z.boolean().describe('Whether specific versions are mentioned')
-  })
+  }),
+
+  teamRouting: z.object({
+    recommendedTeam: z.string().describe('The name of the team that should handle this message'),
+    confidence: z.number().min(0).max(1).describe('Confidence level in the team routing decision'),
+    reasoning: z.string().describe('Brief explanation of why this team was chosen')
+  }).optional().describe('AI-recommended team routing (only if teams are available)')
 });
 
 export type MessageAnalysis = z.infer<typeof messageAnalysisSchema>;
@@ -83,6 +89,10 @@ export async function processMessage(messageData: MessageData): Promise<{
   console.log('Channel:', `#${messageData.channel.name}` + (messageData.channel.isThread ? ' (thread)' : ''));
   console.log('Server:', messageData.guild.name);
   console.log('Content:', messageData.content || '(no text content)');
+
+  // Fetch available teams for AI routing
+  const enabledTeams = await getEnabledTeams();
+  console.log('Available teams for routing:', enabledTeams.length > 0 ? enabledTeams.map(t => t.name).join(', ') : 'None');
   
   // Prepare context for AI analysis
   const attachmentInfo = messageData.attachments.length > 0 
@@ -101,6 +111,14 @@ export async function processMessage(messageData: MessageData): Promise<{
       ].filter(Boolean).join(', ')}`
     : '';
 
+  // Create team information for AI routing
+  const teamInfo = enabledTeams.length > 0 
+    ? `\n\nAvailable Teams for Routing:
+${enabledTeams.map(team => `- ${team.name}: ${team.description}`).join('\n')}
+
+Please also recommend which team should handle this message based on the team descriptions above.`
+    : '';
+
   // Create a comprehensive prompt for AI analysis
   const prompt = `Analyze this Discord message for customer support purposes:
 
@@ -110,7 +128,7 @@ Channel: #${messageData.channel.name} ${messageData.channel.isThread ? '(thread)
 Server: ${messageData.guild.name}
 ${attachmentInfo}
 ${embedInfo}
-${mentionInfo}
+${mentionInfo}${teamInfo}
 
 Please analyze this message and categorize it according to:
 1. Support status type (help request, bug report, feature request, etc.)
@@ -120,15 +138,20 @@ Please analyze this message and categorize it according to:
 5. Whether it needs a response
 6. Provide a brief summary suitable for Slack notification
 7. Suggest actions for handling this message
-8. Assess technical details (code, errors, screenshots, version mentions)`;
+8. Assess technical details (code, errors, screenshots, version mentions)${enabledTeams.length > 0 ? '\n9. Recommend the most appropriate team to handle this message' : ''}`;
 
   const model = process.env.OPENAI_MODEL || 'gpt-4o-mini';
+  
+  // Create dynamic schema based on whether teams are available
+  const dynamicSchema = enabledTeams.length > 0 
+    ? messageAnalysisSchema
+    : messageAnalysisSchema.omit({ teamRouting: true });
   
   try {
     // Use generateObject to get structured analysis
     const result = await generateObject({
       model: openai(model),
-      schema: messageAnalysisSchema,
+      schema: dynamicSchema,
       prompt
     } as any);
 
@@ -145,6 +168,14 @@ Please analyze this message and categorize it according to:
     console.log('Needs Response:', analysis.needsResponse);
     console.log('Summary:', analysis.summary);
     console.log('Customer Mood:', `${analysis.customerMood.emoji} ${analysis.customerMood.description}`);
+    
+    if (analysis.teamRouting) {
+      console.log('\n=== Team Routing ===');
+      console.log('Recommended Team:', analysis.teamRouting.recommendedTeam);
+      console.log('Confidence:', `${(analysis.teamRouting.confidence * 100).toFixed(1)}%`);
+      console.log('Reasoning:', analysis.teamRouting.reasoning);
+    }
+    
     console.log('\nSuggested Actions:');
     analysis.suggestedActions.forEach((action: string) => {
       console.log(`  - ${action}`);
@@ -215,22 +246,80 @@ Please analyze this message and categorize it according to:
       processingTime
     );
 
-    // Check if we should send a Slack webhook
+    // Handle team routing and webhooks
     try {
-      const shouldSend = await shouldSendWebhook(messageData, analysis);
-      if (shouldSend) {
-        console.log(`🔔 Sending Slack webhook for message from ${messageData.author.tag}`);
-        const webhookSent = await sendSlackWebhook(messageData, analysis);
-        if (webhookSent) {
-          console.log(`✅ Slack webhook sent successfully`);
+      let routedToTeam = false;
+      
+      // If we have team routing recommendations, try to route to the recommended team first
+      if (analysis.teamRouting && enabledTeams.length > 0) {
+        const recommendedTeam = enabledTeams.find(team => 
+          team.name.toLowerCase() === analysis.teamRouting!.recommendedTeam.toLowerCase()
+        );
+        
+        if (recommendedTeam) {
+          const shouldSendToTeam = await shouldTeamReceiveWebhook(recommendedTeam, messageData, analysis);
+          if (shouldSendToTeam) {
+            console.log(`🎯 Routing message to recommended team: ${recommendedTeam.name}`);
+            const teamWebhookSent = await sendTeamSlackWebhook(
+              recommendedTeam, 
+              messageData, 
+              analysis, 
+              analysis.teamRouting.confidence
+            );
+            if (teamWebhookSent) {
+              console.log(`✅ Team webhook sent successfully to ${recommendedTeam.name}`);
+              routedToTeam = true;
+            } else {
+              console.log(`❌ Failed to send team webhook to ${recommendedTeam.name}`);
+            }
+          } else {
+            console.log(`⏭️  Recommended team ${recommendedTeam.name} doesn't meet webhook criteria`);
+          }
         } else {
-          console.log(`❌ Failed to send Slack webhook`);
+          console.log(`⚠️  Recommended team "${analysis.teamRouting.recommendedTeam}" not found in enabled teams`);
         }
-      } else {
-        console.log(`⏭️  Message doesn't meet webhook criteria`);
+      }
+      
+      // If no specific team routing or it failed, try other teams that might be interested
+      if (!routedToTeam && enabledTeams.length > 0) {
+        console.log('🔍 Checking other teams for potential routing...');
+        for (const team of enabledTeams) {
+          // Skip the team we already tried
+          if (analysis.teamRouting && team.name.toLowerCase() === analysis.teamRouting.recommendedTeam.toLowerCase()) {
+            continue;
+          }
+          
+          const shouldSendToTeam = await shouldTeamReceiveWebhook(team, messageData, analysis);
+          if (shouldSendToTeam) {
+            console.log(`📤 Sending to team: ${team.name}`);
+            const teamWebhookSent = await sendTeamSlackWebhook(team, messageData, analysis);
+            if (teamWebhookSent) {
+              console.log(`✅ Team webhook sent successfully to ${team.name}`);
+              routedToTeam = true;
+            } else {
+              console.log(`❌ Failed to send team webhook to ${team.name}`);
+            }
+          }
+        }
+      }
+      
+      // Fallback to general webhook if no teams were routed to
+      if (!routedToTeam) {
+        const shouldSend = await shouldSendWebhook(messageData, analysis);
+        if (shouldSend) {
+          console.log(`🔔 Sending general Slack webhook for message from ${messageData.author.tag}`);
+          const webhookSent = await sendSlackWebhook(messageData, analysis);
+          if (webhookSent) {
+            console.log(`✅ General Slack webhook sent successfully`);
+          } else {
+            console.log(`❌ Failed to send general Slack webhook`);
+          }
+        } else {
+          console.log(`⏭️  Message doesn't meet any webhook criteria`);
+        }
       }
     } catch (webhookError) {
-      console.error('❌ Error processing webhook:', webhookError);
+      console.error('❌ Error processing webhooks:', webhookError);
       // Don't fail the entire message processing if webhook fails
     }
 

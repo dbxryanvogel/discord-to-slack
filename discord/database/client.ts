@@ -128,7 +128,149 @@ export async function initializeDatabase(): Promise<void> {
     await sql`CREATE INDEX IF NOT EXISTS idx_usage_model ON usage(model)`;
     await sql`CREATE INDEX IF NOT EXISTS idx_usage_priority ON usage(priority)`;
 
-    console.log('✅ Database initialized successfully');
+    // Create teams table for routing messages to specific teams
+    await sql`
+      CREATE TABLE IF NOT EXISTS teams (
+        id SERIAL PRIMARY KEY,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        
+        -- Team configuration
+        name VARCHAR(255) NOT NULL UNIQUE,
+        description TEXT NOT NULL, -- What this team does (for AI routing)
+        slack_webhook_url VARCHAR(500) NOT NULL,
+        enabled BOOLEAN DEFAULT TRUE,
+        
+        -- Priority thresholds for this team
+        send_critical BOOLEAN DEFAULT TRUE,
+        send_high BOOLEAN DEFAULT TRUE,
+        send_medium BOOLEAN DEFAULT FALSE,
+        send_low BOOLEAN DEFAULT FALSE,
+        
+        -- Support status filters for this team
+        send_help_request BOOLEAN DEFAULT TRUE,
+        send_bug_report BOOLEAN DEFAULT TRUE,
+        send_feature_request BOOLEAN DEFAULT FALSE,
+        send_complaint BOOLEAN DEFAULT TRUE,
+        send_urgent_issue BOOLEAN DEFAULT TRUE,
+        send_feedback BOOLEAN DEFAULT FALSE,
+        send_question BOOLEAN DEFAULT FALSE,
+        send_documentation_issue BOOLEAN DEFAULT FALSE,
+        send_general_discussion BOOLEAN DEFAULT FALSE,
+        send_resolved BOOLEAN DEFAULT FALSE,
+        send_other BOOLEAN DEFAULT FALSE,
+        
+        -- Additional filters
+        only_needs_response BOOLEAN DEFAULT FALSE -- Only send if needs_response is true
+      )
+    `;
+
+    // Create indexes for teams
+    await sql`CREATE INDEX IF NOT EXISTS idx_teams_enabled ON teams(enabled)`;
+    await sql`CREATE INDEX IF NOT EXISTS idx_teams_name ON teams(name)`;
+
+    // Create table to track team webhook sends (for preventing duplicates and tracking routing)
+    await sql`
+      CREATE TABLE IF NOT EXISTS team_webhook_sends (
+        id SERIAL PRIMARY KEY,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        
+        message_id VARCHAR(255) NOT NULL,
+        channel_id VARCHAR(255) NOT NULL,
+        team_id INTEGER REFERENCES teams(id),
+        webhook_url VARCHAR(500) NOT NULL,
+        
+        -- Response tracking
+        success BOOLEAN DEFAULT FALSE,
+        response_status INTEGER,
+        error_message TEXT,
+        
+        -- Routing information
+        routed_by_ai BOOLEAN DEFAULT TRUE,
+        routing_confidence DECIMAL(3, 2), -- AI confidence in routing decision
+        
+        UNIQUE(message_id, team_id) -- Prevent duplicate sends for same message to same team
+      )
+    `;
+
+    // Create indexes for team webhook sends
+    await sql`CREATE INDEX IF NOT EXISTS idx_team_webhook_sends_created_at ON team_webhook_sends(created_at DESC)`;
+    await sql`CREATE INDEX IF NOT EXISTS idx_team_webhook_sends_message_id ON team_webhook_sends(message_id)`;
+    await sql`CREATE INDEX IF NOT EXISTS idx_team_webhook_sends_team_id ON team_webhook_sends(team_id)`;
+
+    // Create webhook_settings table if it doesn't exist (for backward compatibility)
+    await sql`
+      CREATE TABLE IF NOT EXISTS webhook_settings (
+        id SERIAL PRIMARY KEY,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        
+        -- Webhook configuration
+        slack_webhook_url VARCHAR(500),
+        webhook_enabled BOOLEAN DEFAULT FALSE,
+        
+        -- Priority thresholds
+        send_critical BOOLEAN DEFAULT TRUE,
+        send_high BOOLEAN DEFAULT TRUE,
+        send_medium BOOLEAN DEFAULT FALSE,
+        send_low BOOLEAN DEFAULT FALSE,
+        
+        -- Sentiment thresholds
+        min_sentiment_score DECIMAL(3, 2) DEFAULT -1.0, -- Send if sentiment <= this value
+        max_sentiment_score DECIMAL(3, 2) DEFAULT 1.0,  -- Send if sentiment >= this value (for very positive feedback)
+        
+        -- Support status filters
+        send_help_request BOOLEAN DEFAULT TRUE,
+        send_bug_report BOOLEAN DEFAULT TRUE,
+        send_feature_request BOOLEAN DEFAULT FALSE,
+        send_complaint BOOLEAN DEFAULT TRUE,
+        send_urgent_issue BOOLEAN DEFAULT TRUE,
+        send_feedback BOOLEAN DEFAULT FALSE,
+        send_question BOOLEAN DEFAULT FALSE,
+        send_documentation_issue BOOLEAN DEFAULT FALSE,
+        send_general_discussion BOOLEAN DEFAULT FALSE,
+        send_resolved BOOLEAN DEFAULT FALSE,
+        send_other BOOLEAN DEFAULT FALSE,
+        
+        -- Additional filters
+        only_needs_response BOOLEAN DEFAULT FALSE, -- Only send if needs_response is true
+        
+        -- Metadata
+        description TEXT DEFAULT 'Default webhook settings'
+      )
+    `;
+
+    // Insert default settings if none exist
+    await sql`
+      INSERT INTO webhook_settings (description) 
+      SELECT 'Default webhook settings'
+      WHERE NOT EXISTS (SELECT 1 FROM webhook_settings)
+    `;
+
+    // Create webhook_sends table if it doesn't exist (for backward compatibility)
+    await sql`
+      CREATE TABLE IF NOT EXISTS webhook_sends (
+        id SERIAL PRIMARY KEY,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        
+        message_id VARCHAR(255) NOT NULL,
+        channel_id VARCHAR(255) NOT NULL,
+        webhook_url VARCHAR(500) NOT NULL,
+        
+        -- Response tracking
+        success BOOLEAN DEFAULT FALSE,
+        response_status INTEGER,
+        error_message TEXT,
+        
+        UNIQUE(message_id) -- Prevent duplicate sends for same message
+      )
+    `;
+
+    // Create indexes for webhook sends
+    await sql`CREATE INDEX IF NOT EXISTS idx_webhook_sends_created_at ON webhook_sends(created_at DESC)`;
+    await sql`CREATE INDEX IF NOT EXISTS idx_webhook_sends_message_id ON webhook_sends(message_id)`;
+    
+    console.log('✅ Database initialized successfully (including teams tables)');
   } catch (error) {
     console.error('❌ Failed to initialize database:', error);
     throw error;
@@ -751,5 +893,409 @@ export async function sendSlackWebhook(
     }
     
     return false;
+  }
+}
+
+// Team Management Functions
+
+/**
+ * Get all teams
+ */
+export async function getTeams() {
+  return await sql`
+    SELECT * FROM teams 
+    ORDER BY name ASC
+  `;
+}
+
+/**
+ * Get enabled teams for AI routing
+ */
+export async function getEnabledTeams() {
+  return await sql`
+    SELECT * FROM teams 
+    WHERE enabled = true
+    ORDER BY name ASC
+  `;
+}
+
+/**
+ * Get team by ID
+ */
+export async function getTeamById(id: number) {
+  const result = await sql`
+    SELECT * FROM teams 
+    WHERE id = ${id}
+  `;
+  return result[0] || null;
+}
+
+/**
+ * Create a new team
+ */
+export async function createTeam(team: {
+  name: string;
+  description: string;
+  slack_webhook_url: string;
+  enabled?: boolean;
+  send_critical?: boolean;
+  send_high?: boolean;
+  send_medium?: boolean;
+  send_low?: boolean;
+  send_help_request?: boolean;
+  send_bug_report?: boolean;
+  send_feature_request?: boolean;
+  send_complaint?: boolean;
+  send_urgent_issue?: boolean;
+  send_feedback?: boolean;
+  send_question?: boolean;
+  send_documentation_issue?: boolean;
+  send_general_discussion?: boolean;
+  send_resolved?: boolean;
+  send_other?: boolean;
+  only_needs_response?: boolean;
+}) {
+  const result = await sql`
+    INSERT INTO teams (
+      name,
+      description,
+      slack_webhook_url,
+      enabled,
+      send_critical,
+      send_high,
+      send_medium,
+      send_low,
+      send_help_request,
+      send_bug_report,
+      send_feature_request,
+      send_complaint,
+      send_urgent_issue,
+      send_feedback,
+      send_question,
+      send_documentation_issue,
+      send_general_discussion,
+      send_resolved,
+      send_other,
+      only_needs_response
+    ) VALUES (
+      ${team.name},
+      ${team.description},
+      ${team.slack_webhook_url},
+      ${team.enabled ?? true},
+      ${team.send_critical ?? true},
+      ${team.send_high ?? true},
+      ${team.send_medium ?? false},
+      ${team.send_low ?? false},
+      ${team.send_help_request ?? true},
+      ${team.send_bug_report ?? true},
+      ${team.send_feature_request ?? false},
+      ${team.send_complaint ?? true},
+      ${team.send_urgent_issue ?? true},
+      ${team.send_feedback ?? false},
+      ${team.send_question ?? false},
+      ${team.send_documentation_issue ?? false},
+      ${team.send_general_discussion ?? false},
+      ${team.send_resolved ?? false},
+      ${team.send_other ?? false},
+      ${team.only_needs_response ?? false}
+    )
+    RETURNING *
+  `;
+  return result[0];
+}
+
+/**
+ * Update a team
+ */
+export async function updateTeam(id: number, updates: {
+  name?: string;
+  description?: string;
+  slack_webhook_url?: string;
+  enabled?: boolean;
+  send_critical?: boolean;
+  send_high?: boolean;
+  send_medium?: boolean;
+  send_low?: boolean;
+  send_help_request?: boolean;
+  send_bug_report?: boolean;
+  send_feature_request?: boolean;
+  send_complaint?: boolean;
+  send_urgent_issue?: boolean;
+  send_feedback?: boolean;
+  send_question?: boolean;
+  send_documentation_issue?: boolean;
+  send_general_discussion?: boolean;
+  send_resolved?: boolean;
+  send_other?: boolean;
+  only_needs_response?: boolean;
+}) {
+  const result = await sql`
+    UPDATE teams SET
+      name = COALESCE(${updates.name}, name),
+      description = COALESCE(${updates.description}, description),
+      slack_webhook_url = COALESCE(${updates.slack_webhook_url}, slack_webhook_url),
+      enabled = COALESCE(${updates.enabled}, enabled),
+      send_critical = COALESCE(${updates.send_critical}, send_critical),
+      send_high = COALESCE(${updates.send_high}, send_high),
+      send_medium = COALESCE(${updates.send_medium}, send_medium),
+      send_low = COALESCE(${updates.send_low}, send_low),
+      send_help_request = COALESCE(${updates.send_help_request}, send_help_request),
+      send_bug_report = COALESCE(${updates.send_bug_report}, send_bug_report),
+      send_feature_request = COALESCE(${updates.send_feature_request}, send_feature_request),
+      send_complaint = COALESCE(${updates.send_complaint}, send_complaint),
+      send_urgent_issue = COALESCE(${updates.send_urgent_issue}, send_urgent_issue),
+      send_feedback = COALESCE(${updates.send_feedback}, send_feedback),
+      send_question = COALESCE(${updates.send_question}, send_question),
+      send_documentation_issue = COALESCE(${updates.send_documentation_issue}, send_documentation_issue),
+      send_general_discussion = COALESCE(${updates.send_general_discussion}, send_general_discussion),
+      send_resolved = COALESCE(${updates.send_resolved}, send_resolved),
+      send_other = COALESCE(${updates.send_other}, send_other),
+      only_needs_response = COALESCE(${updates.only_needs_response}, only_needs_response),
+      updated_at = CURRENT_TIMESTAMP
+    WHERE id = ${id}
+    RETURNING *
+  `;
+  return result[0];
+}
+
+/**
+ * Delete a team
+ */
+export async function deleteTeam(id: number) {
+  const result = await sql`
+    DELETE FROM teams 
+    WHERE id = ${id}
+    RETURNING *
+  `;
+  return result[0];
+}
+
+/**
+ * Check if a team should receive a webhook for this message
+ */
+export async function shouldTeamReceiveWebhook(
+  team: any,
+  messageData: MessageData,
+  analysis: MessageAnalysis
+): Promise<boolean> {
+  try {
+    if (!team.enabled) {
+      return false;
+    }
+
+    // Check if we need to respect the "only needs response" filter
+    if (team.only_needs_response && !analysis.needsResponse) {
+      return false;
+    }
+
+    // Check priority filters
+    const priorityMap = {
+      critical: team.send_critical,
+      high: team.send_high,
+      medium: team.send_medium,
+      low: team.send_low
+    };
+    
+    if (!priorityMap[analysis.priority as keyof typeof priorityMap]) {
+      return false;
+    }
+
+    // Check support status filters
+    const statusMap = {
+      help_request: team.send_help_request,
+      bug_report: team.send_bug_report,
+      feature_request: team.send_feature_request,
+      complaint: team.send_complaint,
+      urgent_issue: team.send_urgent_issue,
+      feedback: team.send_feedback,
+      question: team.send_question,
+      documentation_issue: team.send_documentation_issue,
+      general_discussion: team.send_general_discussion,
+      resolved: team.send_resolved,
+      other: team.send_other
+    };
+
+    if (!statusMap[analysis.supportStatus as keyof typeof statusMap]) {
+      return false;
+    }
+
+    return true;
+  } catch (error) {
+    console.error('❌ Error checking team webhook conditions:', error);
+    return false;
+  }
+}
+
+/**
+ * Send Slack webhook to a specific team
+ */
+export async function sendTeamSlackWebhook(
+  team: any,
+  messageData: MessageData,
+  analysis: MessageAnalysis,
+  routingConfidence?: number
+): Promise<boolean> {
+  try {
+    if (!team.slack_webhook_url) {
+      console.log(`❌ No webhook URL configured for team ${team.name}`);
+      return false;
+    }
+
+    // Create Discord message URL
+    const discordUrl = `https://discord.com/channels/${messageData.guild.id}/${messageData.channel.id}/${messageData.id}`;
+    
+    // Determine color based on priority and sentiment
+    let color = '#36a64f'; // Default green
+    if (analysis.priority === 'critical') color = '#ff0000'; // Red
+    else if (analysis.priority === 'high') color = '#ff6600'; // Orange
+    else if (analysis.priority === 'medium') color = '#ffcc00'; // Yellow
+    else if (analysis.sentiment.score < -0.5) color = '#ff3300'; // Red for very negative
+
+    // Create Slack message payload
+    const slackPayload = {
+      text: `New Discord message routed to ${team.name}`,
+      attachments: [
+        {
+          color: color,
+          title: `${analysis.customerMood.emoji} Message from ${messageData.author.tag}`,
+          title_link: discordUrl,
+          fields: [
+            {
+              title: 'Routed to Team',
+              value: team.name,
+              short: true
+            },
+            {
+              title: 'Channel',
+              value: `#${messageData.channel.name} (${messageData.guild.name})`,
+              short: true
+            },
+            {
+              title: 'Priority',
+              value: analysis.priority.toUpperCase(),
+              short: true
+            },
+            {
+              title: 'Support Status',
+              value: analysis.supportStatus.replace('_', ' ').toUpperCase(),
+              short: true
+            },
+            {
+              title: 'Sentiment',
+              value: `${analysis.sentiment.score.toFixed(2)} (${analysis.tone})`,
+              short: true
+            },
+            ...(routingConfidence ? [{
+              title: 'AI Routing Confidence',
+              value: `${(routingConfidence * 100).toFixed(1)}%`,
+              short: true
+            }] : []),
+            {
+              title: 'Summary',
+              value: analysis.summary,
+              short: false
+            }
+          ],
+          text: messageData.content.length > 500 
+            ? messageData.content.substring(0, 500) + '...' 
+            : messageData.content,
+          footer: `Discord Bot • Team: ${team.name}`,
+          ts: Math.floor(messageData.timestamp.getTime() / 1000)
+        }
+      ]
+    };
+
+    // Send webhook
+    const response = await fetch(team.slack_webhook_url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(slackPayload)
+    });
+
+    const success = response.ok;
+    
+    // Log the webhook send
+    await sql`
+      INSERT INTO team_webhook_sends (
+        message_id,
+        channel_id,
+        team_id,
+        webhook_url,
+        success,
+        response_status,
+        error_message,
+        routing_confidence
+      ) VALUES (
+        ${messageData.id},
+        ${messageData.channel.id},
+        ${team.id},
+        ${team.slack_webhook_url},
+        ${success},
+        ${response.status},
+        ${success ? null : await response.text()},
+        ${routingConfidence || null}
+      )
+    `;
+
+    if (success) {
+      console.log(`✅ Slack webhook sent to team ${team.name} for message ${messageData.id}`);
+    } else {
+      console.error(`❌ Slack webhook failed for team ${team.name}: ${response.status} ${response.statusText}`);
+    }
+
+    return success;
+  } catch (error) {
+    console.error(`❌ Error sending Slack webhook to team ${team.name}:`, error);
+    
+    // Log the failed attempt
+    try {
+      await sql`
+        INSERT INTO team_webhook_sends (
+          message_id,
+          channel_id,
+          team_id,
+          webhook_url,
+          success,
+          error_message
+        ) VALUES (
+          ${messageData.id},
+          ${messageData.channel.id},
+          ${team.id},
+          ${team.slack_webhook_url || 'unknown'},
+          false,
+          ${error instanceof Error ? error.message : 'Unknown error'}
+        )
+      `;
+    } catch (logError) {
+      console.error('❌ Failed to log team webhook error:', logError);
+    }
+    
+    return false;
+  }
+}
+
+/**
+ * Get team webhook send history
+ */
+export async function getTeamWebhookSends(teamId?: number, limit: number = 50) {
+  if (teamId) {
+    return await sql`
+      SELECT tws.*, t.name as team_name
+      FROM team_webhook_sends tws
+      JOIN teams t ON tws.team_id = t.id
+      WHERE tws.team_id = ${teamId}
+      ORDER BY tws.created_at DESC
+      LIMIT ${limit}
+    `;
+  } else {
+    return await sql`
+      SELECT tws.*, t.name as team_name
+      FROM team_webhook_sends tws
+      JOIN teams t ON tws.team_id = t.id
+      ORDER BY tws.created_at DESC
+      LIMIT ${limit}
+    `;
   }
 }

@@ -188,6 +188,72 @@ ON CONFLICT DO NOTHING;
 -- Create index for webhook settings
 CREATE INDEX IF NOT EXISTS idx_webhook_settings_enabled ON webhook_settings(webhook_enabled);
 
+-- Create teams table for routing messages to specific teams
+CREATE TABLE IF NOT EXISTS teams (
+    id SERIAL PRIMARY KEY,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    
+    -- Team configuration
+    name VARCHAR(255) NOT NULL UNIQUE,
+    description TEXT NOT NULL, -- What this team does (for AI routing)
+    slack_webhook_url VARCHAR(500) NOT NULL,
+    enabled BOOLEAN DEFAULT TRUE,
+    
+    -- Priority thresholds for this team
+    send_critical BOOLEAN DEFAULT TRUE,
+    send_high BOOLEAN DEFAULT TRUE,
+    send_medium BOOLEAN DEFAULT FALSE,
+    send_low BOOLEAN DEFAULT FALSE,
+    
+    -- Support status filters for this team
+    send_help_request BOOLEAN DEFAULT TRUE,
+    send_bug_report BOOLEAN DEFAULT TRUE,
+    send_feature_request BOOLEAN DEFAULT FALSE,
+    send_complaint BOOLEAN DEFAULT TRUE,
+    send_urgent_issue BOOLEAN DEFAULT TRUE,
+    send_feedback BOOLEAN DEFAULT FALSE,
+    send_question BOOLEAN DEFAULT FALSE,
+    send_documentation_issue BOOLEAN DEFAULT FALSE,
+    send_general_discussion BOOLEAN DEFAULT FALSE,
+    send_resolved BOOLEAN DEFAULT FALSE,
+    send_other BOOLEAN DEFAULT FALSE,
+    
+    -- Additional filters
+    only_needs_response BOOLEAN DEFAULT FALSE -- Only send if needs_response is true
+);
+
+-- Create indexes for teams
+CREATE INDEX IF NOT EXISTS idx_teams_enabled ON teams(enabled);
+CREATE INDEX IF NOT EXISTS idx_teams_name ON teams(name);
+
+-- Create table to track team webhook sends (for preventing duplicates and tracking routing)
+CREATE TABLE IF NOT EXISTS team_webhook_sends (
+    id SERIAL PRIMARY KEY,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    
+    message_id VARCHAR(255) NOT NULL,
+    channel_id VARCHAR(255) NOT NULL,
+    team_id INTEGER REFERENCES teams(id),
+    webhook_url VARCHAR(500) NOT NULL,
+    
+    -- Response tracking
+    success BOOLEAN DEFAULT FALSE,
+    response_status INTEGER,
+    error_message TEXT,
+    
+    -- Routing information
+    routed_by_ai BOOLEAN DEFAULT TRUE,
+    routing_confidence DECIMAL(3, 2), -- AI confidence in routing decision
+    
+    UNIQUE(message_id, team_id) -- Prevent duplicate sends for same message to same team
+);
+
+-- Create indexes for team webhook sends
+CREATE INDEX IF NOT EXISTS idx_team_webhook_sends_created_at ON team_webhook_sends(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_team_webhook_sends_message_id ON team_webhook_sends(message_id);
+CREATE INDEX IF NOT EXISTS idx_team_webhook_sends_team_id ON team_webhook_sends(team_id);
+
 -- Create table to track webhook sends (for preventing duplicates)
 CREATE TABLE IF NOT EXISTS webhook_sends (
     id SERIAL PRIMARY KEY,

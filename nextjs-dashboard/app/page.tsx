@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { UsageStatsComponent } from '@/components/usage-stats';
 import { MessageLogsComponent } from '@/components/message-logs';
 import { Button } from '@/components/ui/button';
-import { Settings } from 'lucide-react';
+import { Settings, Users } from 'lucide-react';
 
 export default function Home() {
   return (
@@ -15,12 +15,20 @@ export default function Home() {
               Monitor AI usage statistics and message analysis from your Discord bot
             </p>
           </div>
-          <Link href="/settings">
-            <Button variant="outline">
-              <Settings className="h-4 w-4 mr-2" />
-              Settings
-            </Button>
-          </Link>
+          <div className="flex gap-2">
+            <Link href="/teams">
+              <Button variant="outline">
+                <Users className="h-4 w-4 mr-2" />
+                Teams
+              </Button>
+            </Link>
+            <Link href="/settings">
+              <Button variant="outline">
+                <Settings className="h-4 w-4 mr-2" />
+                Settings
+              </Button>
+            </Link>
+          </div>
         </div>
       </div>
       

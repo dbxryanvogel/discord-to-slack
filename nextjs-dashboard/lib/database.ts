@@ -406,3 +406,201 @@ export async function updateWebhookSettings(settings: {
   `;
   return result[0];
 }
+
+// Team Management Functions
+
+/**
+ * Get all teams
+ */
+export async function getTeams() {
+  return await sql`
+    SELECT * FROM teams 
+    ORDER BY name ASC
+  `;
+}
+
+/**
+ * Get enabled teams for AI routing
+ */
+export async function getEnabledTeams() {
+  return await sql`
+    SELECT * FROM teams 
+    WHERE enabled = true
+    ORDER BY name ASC
+  `;
+}
+
+/**
+ * Get team by ID
+ */
+export async function getTeamById(id: number) {
+  const result = await sql`
+    SELECT * FROM teams 
+    WHERE id = ${id}
+  `;
+  return result[0] || null;
+}
+
+/**
+ * Create a new team
+ */
+export async function createTeam(team: {
+  name: string;
+  description: string;
+  slack_webhook_url: string;
+  enabled?: boolean;
+  send_critical?: boolean;
+  send_high?: boolean;
+  send_medium?: boolean;
+  send_low?: boolean;
+  send_help_request?: boolean;
+  send_bug_report?: boolean;
+  send_feature_request?: boolean;
+  send_complaint?: boolean;
+  send_urgent_issue?: boolean;
+  send_feedback?: boolean;
+  send_question?: boolean;
+  send_documentation_issue?: boolean;
+  send_general_discussion?: boolean;
+  send_resolved?: boolean;
+  send_other?: boolean;
+  only_needs_response?: boolean;
+}) {
+  const result = await sql`
+    INSERT INTO teams (
+      name,
+      description,
+      slack_webhook_url,
+      enabled,
+      send_critical,
+      send_high,
+      send_medium,
+      send_low,
+      send_help_request,
+      send_bug_report,
+      send_feature_request,
+      send_complaint,
+      send_urgent_issue,
+      send_feedback,
+      send_question,
+      send_documentation_issue,
+      send_general_discussion,
+      send_resolved,
+      send_other,
+      only_needs_response
+    ) VALUES (
+      ${team.name},
+      ${team.description},
+      ${team.slack_webhook_url},
+      ${team.enabled ?? true},
+      ${team.send_critical ?? true},
+      ${team.send_high ?? true},
+      ${team.send_medium ?? false},
+      ${team.send_low ?? false},
+      ${team.send_help_request ?? true},
+      ${team.send_bug_report ?? true},
+      ${team.send_feature_request ?? false},
+      ${team.send_complaint ?? true},
+      ${team.send_urgent_issue ?? true},
+      ${team.send_feedback ?? false},
+      ${team.send_question ?? false},
+      ${team.send_documentation_issue ?? false},
+      ${team.send_general_discussion ?? false},
+      ${team.send_resolved ?? false},
+      ${team.send_other ?? false},
+      ${team.only_needs_response ?? false}
+    )
+    RETURNING *
+  `;
+  return result[0];
+}
+
+/**
+ * Update a team
+ */
+export async function updateTeam(id: number, updates: {
+  name?: string;
+  description?: string;
+  slack_webhook_url?: string;
+  enabled?: boolean;
+  send_critical?: boolean;
+  send_high?: boolean;
+  send_medium?: boolean;
+  send_low?: boolean;
+  send_help_request?: boolean;
+  send_bug_report?: boolean;
+  send_feature_request?: boolean;
+  send_complaint?: boolean;
+  send_urgent_issue?: boolean;
+  send_feedback?: boolean;
+  send_question?: boolean;
+  send_documentation_issue?: boolean;
+  send_general_discussion?: boolean;
+  send_resolved?: boolean;
+  send_other?: boolean;
+  only_needs_response?: boolean;
+}) {
+  const result = await sql`
+    UPDATE teams SET
+      name = COALESCE(${updates.name}, name),
+      description = COALESCE(${updates.description}, description),
+      slack_webhook_url = COALESCE(${updates.slack_webhook_url}, slack_webhook_url),
+      enabled = COALESCE(${updates.enabled}, enabled),
+      send_critical = COALESCE(${updates.send_critical}, send_critical),
+      send_high = COALESCE(${updates.send_high}, send_high),
+      send_medium = COALESCE(${updates.send_medium}, send_medium),
+      send_low = COALESCE(${updates.send_low}, send_low),
+      send_help_request = COALESCE(${updates.send_help_request}, send_help_request),
+      send_bug_report = COALESCE(${updates.send_bug_report}, send_bug_report),
+      send_feature_request = COALESCE(${updates.send_feature_request}, send_feature_request),
+      send_complaint = COALESCE(${updates.send_complaint}, send_complaint),
+      send_urgent_issue = COALESCE(${updates.send_urgent_issue}, send_urgent_issue),
+      send_feedback = COALESCE(${updates.send_feedback}, send_feedback),
+      send_question = COALESCE(${updates.send_question}, send_question),
+      send_documentation_issue = COALESCE(${updates.send_documentation_issue}, send_documentation_issue),
+      send_general_discussion = COALESCE(${updates.send_general_discussion}, send_general_discussion),
+      send_resolved = COALESCE(${updates.send_resolved}, send_resolved),
+      send_other = COALESCE(${updates.send_other}, send_other),
+      only_needs_response = COALESCE(${updates.only_needs_response}, only_needs_response),
+      updated_at = CURRENT_TIMESTAMP
+    WHERE id = ${id}
+    RETURNING *
+  `;
+  return result[0];
+}
+
+/**
+ * Delete a team
+ */
+export async function deleteTeam(id: number) {
+  const result = await sql`
+    DELETE FROM teams 
+    WHERE id = ${id}
+    RETURNING *
+  `;
+  return result[0];
+}
+
+/**
+ * Get team webhook send history
+ */
+export async function getTeamWebhookSends(teamId?: number, limit: number = 50) {
+  if (teamId) {
+    return await sql`
+      SELECT tws.*, t.name as team_name
+      FROM team_webhook_sends tws
+      JOIN teams t ON tws.team_id = t.id
+      WHERE tws.team_id = ${teamId}
+      ORDER BY tws.created_at DESC
+      LIMIT ${limit}
+    `;
+  } else {
+    return await sql`
+      SELECT tws.*, t.name as team_name
+      FROM team_webhook_sends tws
+      JOIN teams t ON tws.team_id = t.id
+      ORDER BY tws.created_at DESC
+      LIMIT ${limit}
+    `;
+  }
+}
